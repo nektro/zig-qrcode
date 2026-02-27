@@ -21,11 +21,6 @@ const GF = blk: {
 };
 
 pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16, input: []const u8) BitGrid(4 * version + 17) {
-    _ = &version;
-    _ = &mode;
-    _ = &level;
-    _ = &input;
-
     std.log.warn("mode: {s}", .{@tagName(mode)});
     std.log.warn("level: {s}", .{@tagName(level)});
 
@@ -81,9 +76,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     std.log.warn("total_bits: {d}", .{total_bits});
 
     var scratch: std.bit_set.ArrayBitSet(u8, total_bits) = .initEmpty();
-    _ = &scratch;
     var scratchw: BitsetWriter(u8, total_bits) = .{ .set = &scratch };
-    _ = &scratchw;
 
     scratchw.writeInt(mode_indicator);
     scratchw.writeInt(len_indicator);
@@ -92,15 +85,12 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     const data_bits = input.len * 8 + @bitSizeOf(@TypeOf(mode_indicator)) + @bitSizeOf(@TypeOf(len_indicator));
     std.log.warn("data_bits: {d}", .{data_bits});
     std.debug.assert(scratchw.idx == data_bits);
-    std.debug.assert(scratchw.idx == 44); //temp
 
     // write @max(4, padding_bits) 0s
     for (0..@min(4, total_bits - scratchw.idx)) |_| scratchw.writeInt(@as(u1, 0));
-    std.debug.assert(scratchw.idx == 48); //temp
 
     // add zero bits to make data_bits%8 == 0
     for (0..-%scratchw.idx & 7) |_| scratchw.writeInt(@as(u1, 0));
-    std.debug.assert(scratchw.idx == 48); //temp
 
     // add 236(11101100) 17(00010001) until we reach total_bits
     while (scratchw.idx < total_bits) {
@@ -112,14 +102,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     // std.log.warn("{d}", .{&bitReverse(scratch.masks)});
     // std.log.warn("{x}", .{&bitReverse(scratch.masks)});
 
-    std.debug.assert(@bitReverse(scratch.masks[0]) == 0b01000000); //temp
-    std.debug.assert(!scratch.isSet(0)); //temp
-    std.debug.assert(scratch.isSet(1)); //temp
-    std.debug.assert(!scratch.isSet(2)); //temp
-    std.debug.assert(!scratch.isSet(3)); //temp
-    // 01000000 01000101 01100110 01010111 00100011 00010000 11101100 00010001 11101100 00010001 11101100 00010001 11101100 00010001 11101100 00010001 11101100 00010001 11101100
-    // 01000000 01000101 01100110 01010111 00100011 00010000 11101100 00010001 11101100 00010001 11101100 00010001 11101100 00010001 11101100 00010001 11101100 00010001 11101100
-
     const groups = 1; // ?
     _ = &groups;
     const blocks = 1; // ?
@@ -130,15 +112,12 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     _ = &ecc_per_block;
 
     var message_polynomial = scratch.masks;
-    _ = &message_polynomial;
     std.log.warn("message_polynomial: {d}", .{&bitReverse(message_polynomial)});
 
     const generator_polynomial = reverseArray(generatorPolynomial(ecc_per_block));
-    _ = &generator_polynomial;
     std.log.warn("generator_polynomial: {d}", .{generator_polynomial});
 
     const generator_polynomial_alpha = to_alpha(generator_polynomial);
-    _ = &generator_polynomial_alpha;
     std.log.warn("generator_polynomial_alpha: {d}", .{generator_polynomial_alpha});
 
     // Now that the message and generator polynomials have been created, divide them to get the error codewords.
@@ -166,7 +145,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     std.log.warn("error_codewords: {d}", .{error_codewords});
 
     const interleaved_message = scratch.masks ++ bitReverse(error_codewords);
-    _ = &interleaved_message;
     std.log.warn("interleaved_message: {b:0>8}", .{&bitReverse(interleaved_message)});
 
     // remainder bits
@@ -175,7 +153,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
 
     const size = 4 * version + 17;
     var grid: BitGrid(size) = .initEmpty();
-    _ = &grid;
 
     // top left finder pattern
     for (0..7) |i| for (0..7) |j| grid.setT(0 + i, 0 + j);
@@ -213,19 +190,15 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
 
     // write data
     var data_iter: BufBiterator = .init(&bitReverse(interleaved_message));
-    _ = &data_iter;
 
     var griditer: GridZigZag = .init(size, 6);
     while (griditer.next()) |idx| {
         const x = idx % size;
         const y = (idx - x) / size;
-        // std.log.warn("idx: {d} {d},{d}", .{ idx, x, y });
         if (data_mask.isSet(x, y)) continue;
         grid.debug.set((y * size) + x);
         if (@bitCast(data_iter.next() orelse break)) grid.set(x, y);
     }
-
-    //
 
     for (0..8) |y| for (0..8) |x| grid.debug.set((y * size) + x);
     for (0..8) |y| for (0..8) |x| grid.debug.set((y * size) + size - 8 + x);
