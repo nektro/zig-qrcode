@@ -1,0 +1,7 @@
+id: nvs62rfbcub6qtnmc9v7753nokki6w1y5flyu6hfdkqvtn5x
+name: qrcode
+main: qrcode.zig
+license: MPL-2.0
+description: QR code (quick-response code) generator for Zig
+dependencies:
+  - src: git https://github.com/nektro/zig-extras
