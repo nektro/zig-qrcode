@@ -23,6 +23,18 @@ test {
     // f6 46 52 c2 07 57 02 07   46 f2 03 53 02 06 36 86
     // 17 20 ec 11
     _ = &grid;
+}
+test {
+    const grid = qrcode.encode(.latin1, .M, 10, "VERSION 10 QR CODE, UP TO 174 CHAR AT H LEVEL, WITH 57X57 MODULES AND PLENTY OF ERROR CORRECTION TO GO AROUND. NOTE THAT THERE ARE ADDITIONAL TRACKING BOXES");
+    // 20 25 60 66 db 42 85 e0   b7 37 4e 34 68 95 d0 00
+    // 04 b0 80 d6 72 91 34 c7   2a 93 fc c0 c1 e7 19 df
+    // cc b9 a5 4a a8 b4 00 01   2c 20 df 9d 1a 3b 21 1d
+    // 17 48 af bf 64 ce ef e8   81 d9 4d b1 e9 46 d3 bc
+    // d8 b1 d4 8c d7 9c 68 d2   6d 28 2a 57 13 f3 8c 5c
+    // 5d 19 7a 6b d5 d4 e7 9e   21 1d 27 ce 2c 1e 9e d2
+    // a5 22 a6 8e ea 9a 39 e9   6e 95 c4 f3 af 9c 66 4a
+    // 30 68 2b d1 03 dd b7 00   ec 11
+    _ = &grid;
 
     const bg_black = "\x1b[40m";
     const bg_white = "\x1b[47m";

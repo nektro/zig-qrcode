@@ -110,18 +110,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     std.log.warn("{d}", .{&bitReverse(scratch.masks)});
     std.log.warn("{x}", .{&bitReverse(scratch.masks)});
 
-    const groups = if (groupTwoBlockCount) |_| 2 else 1;
-    _ = &groups;
-    const blocks = groupOneBlockCount;
-    _ = &blocks;
-    const dc_per_block = groupOneDataCodewordsCountPerBlock;
-    _ = &dc_per_block;
-    const ecc_per_block = ecCodewordsPerBlock;
-
-    var message_polynomial = scratch.masks;
-    std.log.warn("message_polynomial: {d}", .{&bitReverse(message_polynomial)});
-
-    const generator_polynomial = reverseArray(generatorPolynomial(ecc_per_block));
+    const generator_polynomial = reverseArray(generatorPolynomial(ecCodewordsPerBlock));
     std.log.warn("generator_polynomial: {d}", .{generator_polynomial});
 
     const generator_polynomial_alpha = to_alpha(generator_polynomial);
@@ -135,24 +124,91 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         // 3. XOR the result of Step 2 with the message polynomial and discard the lead 0 term.
         // 4. Repeat Steps 2-3 n-1 more times where n is the number of data codewords.
     }
-    var mp: [scratch.masks.len + ecc_per_block]?u8 = @splat(null);
-    for (&message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
 
-    for (0..scratch.masks.len) |i| {
-        const lead = mp[i].?;
-        for (&generator_polynomial_alpha, 0..) |x, j| {
-            var y = GF[(@as(usize, x) + lead) % 255];
-            if (mp[i + j]) |z| y ^= GF[z];
-            mp[i + j] = if (y == 0) null else to_alpha(.{y})[0];
+    const group2_block_count = groupTwoBlockCount orelse 0;
+    const group2_datacodewords_per_block = groupTwoDataCodewordsCountPerBlock orelse 0;
+
+    var group1_ec: [groupOneBlockCount][ecCodewordsPerBlock]u8 = @splat(@splat(0));
+    var group2_ec: [group2_block_count][ecCodewordsPerBlock]u8 = @splat(@splat(0));
+
+    for (&group1_ec, 0..) |*g, gn| {
+        const message_polynomial = scratch.masks[groupOneDataCodewordsCountPerBlock * gn ..][0..groupOneDataCodewordsCountPerBlock];
+        std.log.warn("message_polynomial: 1,{d},{d},{d}", .{ gn, message_polynomial.len, &bitReverse(message_polynomial.*) });
+
+        var mp: [groupOneDataCodewordsCountPerBlock + ecCodewordsPerBlock]?u8 = @splat(null);
+        for (message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
+
+        for (0..groupOneDataCodewordsCountPerBlock) |i| {
+            const lead = mp[i].?;
+            for (&generator_polynomial_alpha, 0..) |x, j| {
+                var y = GF[(@as(usize, x) + lead) % 255];
+                if (mp[i + j]) |z| y ^= GF[z];
+                mp[i + j] = if (y == 0) null else to_alpha(.{y})[0];
+            }
+        }
+        for (g, 0..) |_, i| {
+            g[i] = if (mp[message_polynomial.len..][i]) |x| GF[x] else 0;
+        }
+    }
+    for (&group2_ec, 0..) |*g, gn| {
+        const message_polynomial = scratch.masks[groupOneBlockCount * groupOneDataCodewordsCountPerBlock ..][group2_datacodewords_per_block * gn ..][0..group2_datacodewords_per_block];
+        std.log.warn("message_polynomial: 2,{d},{d},{d}", .{ gn, message_polynomial.len, &bitReverse(message_polynomial.*) });
+
+        var mp: [group2_datacodewords_per_block + ecCodewordsPerBlock]?u8 = @splat(null);
+        for (message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
+
+        for (0..group2_datacodewords_per_block) |i| {
+            const lead = mp[i].?;
+            for (&generator_polynomial_alpha, 0..) |x, j| {
+                var y = GF[(@as(usize, x) + lead) % 255];
+                if (mp[i + j]) |z| y ^= GF[z];
+                mp[i + j] = if (y == 0) null else to_alpha(.{y})[0];
+            }
+        }
+        for (g, 0..) |_, i| {
+            g[i] = if (mp[message_polynomial.len..][i]) |x| GF[x] else 0;
         }
     }
 
-    var error_codewords: [ecc_per_block]u8 = @splat(0);
-    for (0..ecc_per_block) |i| error_codewords[i] = if (mp[message_polynomial.len..][i]) |x| GF[x] else 0;
-    std.log.warn("error_codewords: {d}", .{error_codewords});
-
-    const interleaved_message = scratch.masks ++ bitReverse(error_codewords);
+    comptime std.debug.assert(groupOneDataCodewordsCountPerBlock != group2_datacodewords_per_block);
+    const group1_allcodewords_count = groupOneBlockCount * groupOneDataCodewordsCountPerBlock + groupOneBlockCount * ecCodewordsPerBlock;
+    const group2_allcodewords_count = group2_block_count * group2_datacodewords_per_block + group2_block_count * ecCodewordsPerBlock;
+    var interleaved_message: [group1_allcodewords_count + group2_allcodewords_count]u8 = @splat(0);
+    var imi: usize = 0;
+    for (0..@min(groupOneDataCodewordsCountPerBlock, group2_datacodewords_per_block)) |j| {
+        for (0..groupOneBlockCount) |i| {
+            interleaved_message[imi] = scratch.masks[(i * groupOneDataCodewordsCountPerBlock) + j];
+            imi += 1;
+        }
+        for (0..group2_block_count) |i| {
+            interleaved_message[imi] = scratch.masks[(groupOneBlockCount * groupOneDataCodewordsCountPerBlock) + (i * group2_datacodewords_per_block) + j];
+            imi += 1;
+        }
+    }
+    for (0..groupOneDataCodewordsCountPerBlock - @min(groupOneDataCodewordsCountPerBlock, group2_datacodewords_per_block)) |j| {
+        for (0..groupOneBlockCount) |i| {
+            interleaved_message[imi] = scratch.masks[(i * groupOneDataCodewordsCountPerBlock) + j];
+            imi += 1;
+        }
+    }
+    for (0..group2_datacodewords_per_block - @min(groupOneDataCodewordsCountPerBlock, group2_datacodewords_per_block)) |j| {
+        for (0..group2_block_count) |i| {
+            interleaved_message[imi] = scratch.masks[(groupOneBlockCount * groupOneDataCodewordsCountPerBlock) + (i * group2_datacodewords_per_block) + j];
+            imi += 1;
+        }
+    }
+    for (0..ecCodewordsPerBlock) |j| {
+        for (0..groupOneBlockCount) |i| {
+            interleaved_message[imi] = @bitReverse(group1_ec[i][j]);
+            imi += 1;
+        }
+        for (0..group2_block_count) |i| {
+            interleaved_message[imi] = @bitReverse(group2_ec[i][j]);
+            imi += 1;
+        }
+    }
     std.log.warn("interleaved_message: {b:0>8}", .{&bitReverse(interleaved_message)});
+    std.debug.assert(imi == interleaved_message.len);
 
     // remainder bits
     const remainder_bits_count = comptime remainderBitsCount(version);
@@ -184,8 +240,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     // dark module
     grid.set(8, 4 * (version - 1) + 13);
 
-    // version block
-
     // data mask (data cannot be placed where this is set)
     var data_mask: BitGrid(size) = .initEmpty();
     for (0..9) |y| for (0..9) |x| data_mask.set(x, y);
@@ -196,13 +250,12 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
 
     // alignment patterns
     const alignment_pattern_centers = comptime alignmentPatternCenters(version);
-    for (alignment_pattern_centers) |y| {
-        for (alignment_pattern_centers) |x| blk: {
-            for (y - 2..y + 2 + 1) |y2| {
-                for (x - 2..x + 2 + 1) |x2| {
-                    if (grid.isSet(x2, y2)) break :blk;
-                }
-            }
+    for (alignment_pattern_centers, 0..) |y, i| {
+        for (alignment_pattern_centers, 0..) |x, j| blk: {
+            if (i == 0 and j == 0) break :blk;
+            if (i == 0 and j == alignment_pattern_centers.len - 1) break :blk;
+            if (j == 0 and i == alignment_pattern_centers.len - 1) break :blk;
+
             for (y - 2..y + 2 + 1) |y2| for (x - 2..x + 2 + 1) |x2| {
                 grid.setT(x2, y2);
                 data_mask.set(x2, y2);
@@ -213,6 +266,27 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
             };
             grid.setT(x, y);
             data_mask.set(x, y);
+        }
+    }
+
+    // version block
+    if (version >= 7) {
+        var bititer: std.bit_set.IntegerBitSet(18) = .{ .mask = versionBits(version) };
+        std.debug.assert(bititer.mask == 0b001010010011010011);
+        std.debug.assert(bititer.isSet(0));
+        std.debug.assert(bititer.isSet(1));
+
+        for (0..3) |x| {
+            for (0..6) |y| {
+                grid.setV(size - 11 + x, y, bititer.isSet((y * 3) + x));
+                data_mask.set(size - 11 + x, y);
+            }
+        }
+        for (0..6) |x| {
+            for (0..3) |y| {
+                grid.setV(x, size - 11 + y, bititer.isSet((x * 3) + y));
+                data_mask.set(x, size - 11 + y);
+            }
         }
     }
 
@@ -567,7 +641,7 @@ fn isAlphanumeric(c: u8) bool {
     return switch (c) {
         '0'...'9' => true,
         'A'...'Z' => true,
-        ' ', '$', '%', '*', '+', '-', '.', '/', ':', ',' => true,
+        ' ', '$', '%', '*', '+', '-', '.', '/', ':' => true,
         else => false,
     };
 }
@@ -887,6 +961,52 @@ fn alignmentPatternCenters(version: u16) []const u8 {
     }[version];
 }
 
+fn versionBits(version: u16) u18 {
+    return ([_]u18{
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0b000111110010010100,
+        0b001000010110111100,
+        0b001001101010011001,
+        0b001010010011010011,
+        0b001011101111110110,
+        0b001100011101100010,
+        0b001101100001000111,
+        0b001110011000001101,
+        0b001111100100101000,
+        0b010000101101111000,
+        0b010001010001011101,
+        0b010010101000010111,
+        0b010011010100110010,
+        0b010100100110100110,
+        0b010101011010000011,
+        0b010110100011001001,
+        0b010111011111101100,
+        0b011000111011000100,
+        0b011001000111100001,
+        0b011010111110101011,
+        0b011011000010001110,
+        0b011100110000011010,
+        0b011101001100111111,
+        0b011110110101110101,
+        0b011111001001010000,
+        0b100000100111010101,
+        0b100001011011110000,
+        0b100010100010111010,
+        0b100011011110011111,
+        0b100100101100001011,
+        0b100101010000101110,
+        0b100110101001100100,
+        0b100111010101000001,
+        0b101000110001101001,
+    })[version];
+}
+
 //
 //
 //
@@ -895,10 +1015,11 @@ fn alignmentPatternCenters(version: u16) []const u8 {
 const BufBiterator = struct {
     buf: []const u8,
     bits: std.bit_set.IntegerBitSet(8),
-    idx: u8, // buf index
+    idx: u32, // buf index
     jdx: u8, // bits index
 
     pub fn init(buf: []const u8) BufBiterator {
+        std.debug.assert(buf.len > 0);
         return .{
             .buf = buf,
             .bits = .{ .mask = buf[0] },
