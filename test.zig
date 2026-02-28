@@ -5,6 +5,11 @@ test {
     const grid = qrcode.encode(.latin1, .L, 1, "Ver1");
     // 40 45 66 57 23 10 ec 11   ec
     _ = &grid;
+}
+test {
+    const grid = qrcode.encode(.latin1, .L, 2, "Version 2");
+    // 40 95 66 57 27 36 96 f6   e2 03 20 ec 11 ec 11 ec
+    _ = &grid;
 
     const bg_black = "\x1b[40m";
     const bg_white = "\x1b[47m";

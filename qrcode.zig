@@ -35,6 +35,14 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     std.debug.assert(input.len <= max_length);
     for (max_lengths, 0..) |l, i| if (l > input.len) break std.log.warn("reccom version: {d},{d}", .{ i, l });
 
+    const dataCodewordsCount, const ecCodewordsPerBlock, const groupOneBlockCount, const groupOneDataCodewordsCountPerBlock, const groupTwoBlockCount, const groupTwoDataCodewordsCountPerBlock = comptime errorCorrection(level, version);
+    std.log.warn("dataCodewordsCount: {d}", .{dataCodewordsCount});
+    std.log.warn("ecCodewordsPerBlock: {d}", .{ecCodewordsPerBlock});
+    std.log.warn("groupOneBlockCount: {d}", .{groupOneBlockCount});
+    std.log.warn("groupOneDataCodewordsCountPerBlock: {d}", .{groupOneDataCodewordsCountPerBlock});
+    std.log.warn("groupTwoBlockCount: {?d}", .{groupTwoBlockCount});
+    std.log.warn("groupTwoDataCodewordsCountPerBlock: {?d}", .{groupTwoDataCodewordsCountPerBlock});
+
     const mode_indicator: u4 = switch (mode) {
         .numeric => 0b0001,
         .alphanumeric => 0b0010,
@@ -72,7 +80,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     const len_indicator: LenIndicator = @intCast(input.len);
     std.log.warn("len_indicator: {d}", .{len_indicator});
 
-    const total_bits = (max_length + 2) * 8;
+    const total_bits = dataCodewordsCount * 8;
     std.log.warn("total_bits: {d}", .{total_bits});
 
     var scratch: std.bit_set.ArrayBitSet(u8, total_bits) = .initEmpty();
@@ -98,18 +106,17 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         scratchw.writeInt(@as(u8, 0x11));
     }
 
-    // std.log.warn("{b:0>8}", .{&bitReverse(scratch.masks)});
-    // std.log.warn("{d}", .{&bitReverse(scratch.masks)});
-    // std.log.warn("{x}", .{&bitReverse(scratch.masks)});
+    std.log.warn("{b:0>8}", .{&bitReverse(scratch.masks)});
+    std.log.warn("{d}", .{&bitReverse(scratch.masks)});
+    std.log.warn("{x}", .{&bitReverse(scratch.masks)});
 
-    const groups = 1; // ?
+    const groups = if (groupTwoBlockCount) |_| 2 else 1;
     _ = &groups;
-    const blocks = 1; // ?
+    const blocks = groupOneBlockCount;
     _ = &blocks;
-    const dc_per_block = 19; //?
+    const dc_per_block = groupOneDataCodewordsCountPerBlock;
     _ = &dc_per_block;
-    const ecc_per_block = 7; //?
-    _ = &ecc_per_block;
+    const ecc_per_block = ecCodewordsPerBlock;
 
     var message_polynomial = scratch.masks;
     std.log.warn("message_polynomial: {d}", .{&bitReverse(message_polynomial)});
@@ -148,6 +155,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     std.log.warn("interleaved_message: {b:0>8}", .{&bitReverse(interleaved_message)});
 
     // remainder bits
+    const remainder_bits_count = comptime remainderBitsCount(version);
 
     //
 
@@ -173,8 +181,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     for (8..size) |i| if (i % 2 == 0) grid.set(i, 6);
     for (8..size) |i| if (i % 2 == 0) grid.set(6, i);
 
-    // alignment patterns
-
     // dark module
     grid.set(8, 4 * (version - 1) + 13);
 
@@ -188,6 +194,28 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     for (0..size) |i| data_mask.set(i, 6);
     for (0..size) |i| data_mask.set(6, i);
 
+    // alignment patterns
+    const alignment_pattern_centers = comptime alignmentPatternCenters(version);
+    for (alignment_pattern_centers) |y| {
+        for (alignment_pattern_centers) |x| blk: {
+            for (y - 2..y + 2 + 1) |y2| {
+                for (x - 2..x + 2 + 1) |x2| {
+                    if (grid.isSet(x2, y2)) break :blk;
+                }
+            }
+            for (y - 2..y + 2 + 1) |y2| for (x - 2..x + 2 + 1) |x2| {
+                grid.setT(x2, y2);
+                data_mask.set(x2, y2);
+            };
+            for (y - 1..y + 1 + 1) |y2| for (x - 1..x + 1 + 1) |x2| {
+                grid.setF(x2, y2);
+                data_mask.set(x2, y2);
+            };
+            grid.setT(x, y);
+            data_mask.set(x, y);
+        }
+    }
+
     // write data
     var data_iter: BufBiterator = .init(&bitReverse(interleaved_message));
 
@@ -198,6 +226,12 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         if (data_mask.isSet(x, y)) continue;
         grid.debug.set((y * size) + x);
         if (@bitCast(data_iter.next() orelse break)) grid.set(x, y);
+    }
+    for (0..remainder_bits_count) |_| {
+        const idx = griditer.next().?;
+        const x = idx % size;
+        const y = (idx - x) / size;
+        grid.debug.set((y * size) + x);
     }
 
     for (0..8) |y| for (0..8) |x| grid.debug.set((y * size) + x);
@@ -548,7 +582,7 @@ fn generatorPolynomial(comptime n: usize) [n + 1]u8 {
     var multiply_alpha: [n * 2][2]u8 = @splat(@splat(0));
     for (&prev_alpha, 0..) |a, i| {
         for (&term_alpha, 0..) |b, j| {
-            multiply_alpha[(term_alpha.len * i) + j] = .{ a + b, @intCast(i + j) };
+            multiply_alpha[(term_alpha.len * i) + j] = .{ @intCast((@as(u16, a) + b) % 255), @intCast(i + j) };
         }
     }
     var combine_alpha: [n + 1]u8 = @splat(0);
@@ -609,6 +643,248 @@ fn formatPattern(level: Level, mask: u3) u15 {
             7 => 0b000100000111011,
         },
     };
+}
+
+fn errorCorrection(level: Level, version: u16) ErrorCorrectionEntry {
+    return switch (level) {
+        .L => &.{
+            std.mem.zeroes(ErrorCorrectionEntry),
+            .{ 19, 7, 1, 19, null, null },
+            .{ 34, 10, 1, 34, null, null },
+            .{ 55, 15, 1, 55, null, null },
+            .{ 80, 20, 1, 80, null, null },
+            .{ 108, 26, 1, 108, null, null },
+            .{ 136, 18, 2, 68, null, null },
+            .{ 156, 20, 2, 78, null, null },
+            .{ 194, 24, 2, 97, null, null },
+            .{ 232, 30, 2, 116, null, null },
+            .{ 274, 18, 2, 68, 2, 69 },
+            .{ 324, 20, 4, 81, null, null },
+            .{ 370, 24, 2, 92, 2, 93 },
+            .{ 428, 26, 4, 107, null, null },
+            .{ 461, 30, 3, 115, 1, 116 },
+            .{ 523, 22, 5, 87, 1, 88 },
+            .{ 589, 24, 5, 98, 1, 99 },
+            .{ 647, 28, 1, 107, 5, 108 },
+            .{ 721, 30, 5, 120, 1, 121 },
+            .{ 795, 28, 3, 113, 4, 114 },
+            .{ 861, 28, 3, 107, 5, 108 },
+            .{ 932, 28, 4, 116, 4, 117 },
+            .{ 1006, 28, 2, 111, 7, 112 },
+            .{ 1094, 30, 4, 121, 5, 122 },
+            .{ 1174, 30, 6, 117, 4, 118 },
+            .{ 1276, 26, 8, 106, 4, 107 },
+            .{ 1370, 28, 10, 114, 2, 115 },
+            .{ 1468, 30, 8, 122, 4, 123 },
+            .{ 1531, 30, 3, 117, 10, 118 },
+            .{ 1631, 30, 7, 116, 7, 117 },
+            .{ 1735, 30, 5, 115, 10, 116 },
+            .{ 1843, 30, 13, 115, 3, 116 },
+            .{ 1955, 30, 17, 115, null, null },
+            .{ 2071, 30, 17, 115, 1, 116 },
+            .{ 2191, 30, 13, 115, 6, 116 },
+            .{ 2306, 30, 12, 121, 7, 122 },
+            .{ 2434, 30, 6, 121, 14, 122 },
+            .{ 2566, 30, 17, 122, 4, 123 },
+            .{ 2702, 30, 4, 122, 18, 123 },
+            .{ 2812, 30, 20, 117, 4, 118 },
+            .{ 2956, 30, 19, 118, 6, 119 },
+        },
+        .M => &.{
+            std.mem.zeroes(ErrorCorrectionEntry),
+            .{ 16, 10, 1, 16, null, null },
+            .{ 28, 16, 1, 28, null, null },
+            .{ 44, 26, 1, 44, null, null },
+            .{ 64, 18, 2, 32, null, null },
+            .{ 86, 24, 2, 43, null, null },
+            .{ 108, 16, 4, 27, null, null },
+            .{ 124, 18, 4, 31, null, null },
+            .{ 154, 22, 2, 38, 2, 39 },
+            .{ 182, 22, 3, 36, 2, 37 },
+            .{ 216, 26, 4, 43, 1, 44 },
+            .{ 254, 30, 1, 50, 4, 51 },
+            .{ 290, 22, 6, 36, 2, 37 },
+            .{ 334, 22, 8, 37, 1, 38 },
+            .{ 365, 24, 4, 40, 5, 41 },
+            .{ 415, 24, 5, 41, 5, 42 },
+            .{ 453, 28, 7, 45, 3, 46 },
+            .{ 507, 28, 10, 46, 1, 47 },
+            .{ 563, 26, 9, 43, 4, 44 },
+            .{ 627, 26, 3, 44, 11, 45 },
+            .{ 669, 26, 3, 41, 13, 42 },
+            .{ 714, 26, 17, 42, null, null },
+            .{ 782, 28, 17, 46, null, null },
+            .{ 860, 28, 4, 47, 14, 48 },
+            .{ 914, 28, 6, 45, 14, 46 },
+            .{ 1000, 28, 8, 47, 13, 48 },
+            .{ 1062, 28, 19, 46, 4, 47 },
+            .{ 1128, 28, 22, 45, 3, 46 },
+            .{ 1193, 28, 3, 45, 23, 46 },
+            .{ 1267, 28, 21, 45, 7, 46 },
+            .{ 1373, 28, 19, 47, 10, 48 },
+            .{ 1455, 28, 2, 46, 29, 47 },
+            .{ 1541, 28, 10, 46, 23, 47 },
+            .{ 1631, 28, 14, 46, 21, 47 },
+            .{ 1725, 28, 14, 46, 23, 47 },
+            .{ 1812, 28, 12, 47, 26, 48 },
+            .{ 1914, 28, 6, 47, 34, 48 },
+            .{ 1992, 28, 29, 46, 14, 47 },
+            .{ 2102, 28, 13, 46, 32, 47 },
+            .{ 2216, 28, 40, 47, 7, 48 },
+            .{ 2334, 28, 18, 47, 31, 48 },
+        },
+        .Q => &.{
+            std.mem.zeroes(ErrorCorrectionEntry),
+            .{ 13, 13, 1, 13, null, null },
+            .{ 22, 22, 1, 22, null, null },
+            .{ 34, 18, 2, 17, null, null },
+            .{ 48, 26, 2, 24, null, null },
+            .{ 62, 18, 2, 15, 2, 16 },
+            .{ 76, 24, 4, 19, null, null },
+            .{ 88, 18, 2, 14, 4, 15 },
+            .{ 110, 22, 4, 18, 2, 19 },
+            .{ 132, 20, 4, 16, 4, 17 },
+            .{ 154, 24, 6, 19, 2, 20 },
+            .{ 180, 28, 4, 22, 4, 23 },
+            .{ 206, 26, 4, 20, 6, 21 },
+            .{ 244, 24, 8, 20, 4, 21 },
+            .{ 261, 20, 11, 16, 5, 17 },
+            .{ 295, 30, 5, 24, 7, 25 },
+            .{ 325, 24, 15, 19, 2, 20 },
+            .{ 367, 28, 1, 22, 15, 23 },
+            .{ 397, 28, 17, 22, 1, 23 },
+            .{ 445, 26, 17, 21, 4, 22 },
+            .{ 485, 30, 15, 24, 5, 25 },
+            .{ 512, 28, 17, 22, 6, 23 },
+            .{ 568, 30, 7, 24, 16, 25 },
+            .{ 614, 30, 11, 24, 14, 25 },
+            .{ 664, 30, 11, 24, 16, 25 },
+            .{ 718, 30, 7, 24, 22, 25 },
+            .{ 754, 28, 28, 22, 6, 23 },
+            .{ 808, 30, 8, 23, 26, 24 },
+            .{ 871, 30, 4, 24, 31, 25 },
+            .{ 911, 30, 1, 23, 37, 24 },
+            .{ 985, 30, 15, 24, 25, 25 },
+            .{ 1033, 30, 42, 24, 1, 25 },
+            .{ 1115, 30, 10, 24, 35, 25 },
+            .{ 1171, 30, 29, 24, 19, 25 },
+            .{ 1231, 30, 44, 24, 7, 25 },
+            .{ 1286, 30, 39, 24, 14, 25 },
+            .{ 1354, 30, 46, 24, 10, 25 },
+            .{ 1426, 30, 49, 24, 10, 25 },
+            .{ 1502, 30, 48, 24, 14, 25 },
+            .{ 1582, 30, 43, 24, 22, 25 },
+            .{ 1666, 30, 34, 24, 34, 25 },
+        },
+        .H => &.{
+            std.mem.zeroes(ErrorCorrectionEntry),
+            .{ 9, 17, 1, 9, null, null },
+            .{ 16, 28, 1, 16, null, null },
+            .{ 26, 22, 2, 13, null, null },
+            .{ 36, 16, 4, 9, null, null },
+            .{ 46, 22, 2, 11, 2, 12 },
+            .{ 60, 28, 4, 15, null, null },
+            .{ 66, 26, 4, 13, 1, 14 },
+            .{ 86, 26, 4, 14, 2, 15 },
+            .{ 100, 24, 4, 12, 4, 13 },
+            .{ 122, 28, 6, 15, 2, 16 },
+            .{ 140, 24, 3, 12, 8, 13 },
+            .{ 158, 28, 7, 14, 4, 15 },
+            .{ 180, 22, 12, 11, 4, 12 },
+            .{ 197, 24, 11, 12, 5, 13 },
+            .{ 223, 24, 11, 12, 7, 13 },
+            .{ 253, 30, 3, 15, 13, 16 },
+            .{ 283, 28, 2, 14, 17, 15 },
+            .{ 313, 28, 2, 14, 19, 15 },
+            .{ 341, 26, 9, 13, 16, 14 },
+            .{ 385, 28, 15, 15, 10, 16 },
+            .{ 406, 30, 19, 16, 6, 17 },
+            .{ 442, 24, 34, 13, null, null },
+            .{ 464, 30, 16, 15, 14, 16 },
+            .{ 514, 30, 30, 16, 2, 17 },
+            .{ 538, 30, 22, 15, 13, 16 },
+            .{ 596, 30, 33, 16, 4, 17 },
+            .{ 628, 30, 12, 15, 28, 16 },
+            .{ 661, 30, 11, 15, 31, 16 },
+            .{ 701, 30, 19, 15, 26, 16 },
+            .{ 745, 30, 23, 15, 25, 16 },
+            .{ 793, 30, 23, 15, 28, 16 },
+            .{ 845, 30, 19, 115, 35, 16 },
+            .{ 901, 30, 11, 15, 46, 16 },
+            .{ 961, 30, 59, 16, 1, 17 },
+            .{ 986, 30, 22, 15, 41, 16 },
+            .{ 1054, 30, 2, 15, 64, 16 },
+            .{ 1096, 30, 24, 15, 46, 16 },
+            .{ 1142, 30, 42, 15, 32, 16 },
+            .{ 1222, 30, 10, 15, 67, 16 },
+            .{ 1276, 30, 20, 15, 61, 16 },
+        },
+    }[version];
+}
+
+const ErrorCorrectionEntry = struct {
+    /// dataCodewordsCount
+    u32,
+    /// ecCodewordsPerBlock
+    u32,
+    /// groupOneBlockCount
+    u32,
+    /// groupOneDataCodewordsCountPerBlock
+    u32,
+    /// groupTwoBlockCount
+    ?u32,
+    /// groupTwoDataCodewordsCountPerBlock
+    ?u32,
+};
+
+fn remainderBitsCount(version: u16) u8 {
+    return .{ 0, 0, 7, 7, 7, 7, 7, 0, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0, 0, 0 }[version];
+}
+
+fn alignmentPatternCenters(version: u16) []const u8 {
+    return .{
+        &.{},
+        &.{},
+        &.{ 6, 18 },
+        &.{ 6, 22 },
+        &.{ 6, 26 },
+        &.{ 6, 30 },
+        &.{ 6, 34 },
+        &.{ 6, 22, 38 },
+        &.{ 6, 24, 42 },
+        &.{ 6, 26, 46 },
+        &.{ 6, 28, 50 },
+        &.{ 6, 30, 54 },
+        &.{ 6, 32, 58 },
+        &.{ 6, 34, 62 },
+        &.{ 6, 26, 46, 66 },
+        &.{ 6, 26, 48, 70 },
+        &.{ 6, 26, 50, 74 },
+        &.{ 6, 30, 54, 78 },
+        &.{ 6, 30, 56, 82 },
+        &.{ 6, 30, 58, 86 },
+        &.{ 6, 34, 62, 90 },
+        &.{ 6, 28, 50, 72, 94 },
+        &.{ 6, 26, 50, 74, 98 },
+        &.{ 6, 30, 54, 78, 102 },
+        &.{ 6, 28, 54, 80, 106 },
+        &.{ 6, 32, 58, 84, 110 },
+        &.{ 6, 30, 58, 86, 114 },
+        &.{ 6, 34, 62, 90, 118 },
+        &.{ 6, 26, 50, 74, 98, 122 },
+        &.{ 6, 30, 54, 78, 102, 126 },
+        &.{ 6, 26, 52, 78, 104, 130 },
+        &.{ 6, 30, 56, 82, 108, 134 },
+        &.{ 6, 34, 60, 86, 112, 138 },
+        &.{ 6, 30, 58, 86, 114, 142 },
+        &.{ 6, 32, 62, 90, 118, 146 },
+        &.{ 6, 30, 54, 78, 102, 126, 150 },
+        &.{ 6, 24, 50, 76, 102, 128, 154 },
+        &.{ 6, 28, 54, 80, 106, 132, 158 },
+        &.{ 6, 32, 58, 84, 110, 136, 162 },
+        &.{ 6, 26, 54, 82, 110, 138, 166 },
+        &.{ 6, 30, 58, 86, 114, 142, 170 },
+    }[version];
 }
 
 //
