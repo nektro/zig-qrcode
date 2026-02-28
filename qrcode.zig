@@ -22,9 +22,6 @@ const GF = blk: {
 };
 
 pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16, input: []const u8) BitGrid(4 * version + 17) {
-    std.log.warn("mode: {s}", .{@tagName(mode)});
-    std.log.warn("level: {s}", .{@tagName(level)});
-
     if (mode == .numeric) std.debug.assert(extras.matchesAll(u8, input, isNumeric));
     if (mode == .alphanumeric) std.debug.assert(extras.matchesAll(u8, input, isAlphanumeric));
     // latin1 is a full 1-byte format, some readers can detect utf-8
@@ -32,17 +29,9 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
 
     const max_lengths = comptime maxLenPerModeLevelVersion(mode, level);
     const max_length = max_lengths[version];
-    std.log.warn("actual version: {d},{d},{d}", .{ version, max_length, input.len });
     std.debug.assert(input.len <= max_length);
-    for (max_lengths, 0..) |l, i| if (l > input.len) break std.log.warn("reccom version: {d},{d}", .{ i, l });
 
     const dataCodewordsCount, const ecCodewordsPerBlock, const groupOneBlockCount, const groupOneDataCodewordsCountPerBlock, const groupTwoBlockCount, const groupTwoDataCodewordsCountPerBlock = comptime errorCorrection(level, version);
-    std.log.warn("dataCodewordsCount: {d}", .{dataCodewordsCount});
-    std.log.warn("ecCodewordsPerBlock: {d}", .{ecCodewordsPerBlock});
-    std.log.warn("groupOneBlockCount: {d}", .{groupOneBlockCount});
-    std.log.warn("groupOneDataCodewordsCountPerBlock: {d}", .{groupOneDataCodewordsCountPerBlock});
-    std.log.warn("groupTwoBlockCount: {?d}", .{groupTwoBlockCount});
-    std.log.warn("groupTwoDataCodewordsCountPerBlock: {?d}", .{groupTwoDataCodewordsCountPerBlock});
 
     const mode_indicator: u4 = switch (mode) {
         .numeric => 0b0001,
@@ -50,7 +39,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         .latin1 => 0b0100,
         .shiftjis => 0b1000,
     };
-    std.log.warn("mode_indicator: {d}", .{mode_indicator});
 
     const LenIndicator = switch (mode) {
         .numeric => switch (version) {
@@ -79,10 +67,8 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         },
     };
     const len_indicator: LenIndicator = @intCast(input.len);
-    std.log.warn("len_indicator: {d}", .{len_indicator});
 
     const total_bits = dataCodewordsCount * 8;
-    std.log.warn("total_bits: {d}", .{total_bits});
 
     var scratch: std.bit_set.ArrayBitSet(u8, total_bits) = .initEmpty();
     var scratchw: BitsetWriter(u8, total_bits) = .{ .set = &scratch };
@@ -92,7 +78,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     for (input) |x| scratchw.writeInt(x);
 
     const data_bits = input.len * 8 + @bitSizeOf(@TypeOf(mode_indicator)) + @bitSizeOf(@TypeOf(len_indicator));
-    std.log.warn("data_bits: {d}", .{data_bits});
     std.debug.assert(scratchw.idx == data_bits);
 
     // write @max(4, padding_bits) 0s
@@ -107,15 +92,8 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         scratchw.writeInt(@as(u8, 0x11));
     }
 
-    std.log.warn("{b:0>8}", .{&bitReverse(scratch.masks)});
-    std.log.warn("{d}", .{&bitReverse(scratch.masks)});
-    std.log.warn("{x}", .{&bitReverse(scratch.masks)});
-
     const generator_polynomial = reverseArray(generatorPolynomial(ecCodewordsPerBlock));
-    std.log.warn("generator_polynomial: {d}", .{generator_polynomial});
-
     const generator_polynomial_alpha = to_alpha(generator_polynomial);
-    std.log.warn("generator_polynomial_alpha: {d}", .{generator_polynomial_alpha});
 
     // Now that the message and generator polynomials have been created, divide them to get the error codewords.
     {
@@ -134,7 +112,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
 
     for (&group1_ec, 0..) |*g, gn| {
         const message_polynomial = scratch.masks[groupOneDataCodewordsCountPerBlock * gn ..][0..groupOneDataCodewordsCountPerBlock];
-        std.log.warn("message_polynomial: 1,{d},{d},{d}", .{ gn, message_polynomial.len, &bitReverse(message_polynomial.*) });
 
         var mp: [groupOneDataCodewordsCountPerBlock + ecCodewordsPerBlock]?u8 = @splat(null);
         for (message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
@@ -153,7 +130,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     }
     for (&group2_ec, 0..) |*g, gn| {
         const message_polynomial = scratch.masks[groupOneBlockCount * groupOneDataCodewordsCountPerBlock ..][group2_datacodewords_per_block * gn ..][0..group2_datacodewords_per_block];
-        std.log.warn("message_polynomial: 2,{d},{d},{d}", .{ gn, message_polynomial.len, &bitReverse(message_polynomial.*) });
 
         var mp: [group2_datacodewords_per_block + ecCodewordsPerBlock]?u8 = @splat(null);
         for (message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
@@ -208,11 +184,11 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
             imi += 1;
         }
     }
-    std.log.warn("interleaved_message: {b:0>8}", .{&bitReverse(interleaved_message)});
     std.debug.assert(imi == interleaved_message.len);
 
     // remainder bits
     const remainder_bits_count = comptime remainderBitsCount(version);
+    _ = remainder_bits_count;
 
     //
 
@@ -295,21 +271,8 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         const x = idx % size;
         const y = (idx - x) / size;
         if (data_mask.isSet(x, y)) continue;
-        grid.debug.set((y * size) + x);
         if (@bitCast(data_iter.next() orelse break)) grid.set(x, y);
     }
-    for (0..remainder_bits_count) |_| {
-        const idx = griditer.next().?;
-        const x = idx % size;
-        const y = (idx - x) / size;
-        grid.debug.set((y * size) + x);
-    }
-
-    for (0..8) |y| for (0..8) |x| grid.debug.set((y * size) + x);
-    for (0..8) |y| for (0..8) |x| grid.debug.set((y * size) + size - 8 + x);
-    for (0..8) |y| for (0..8) |x| grid.debug.set(((size - 8 + y) * size) + x);
-    for (0..size) |i| grid.debug.set((6 * size) + i);
-    for (0..size) |i| grid.debug.set((i * size) + 6);
 
     // format info
     var masks = [_]std.bit_set.IntegerBitSet(15){
@@ -466,30 +429,23 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         const div = [_]u32{ @divFloor(sub[0], 5), @divFloor(sub[1], 5) };
         penaltys[i][3] += std.mem.min(u32, &div) * 10;
     }
-    for (&penaltys) |x| std.log.warn("penaltys: {d}", .{&x});
 
     var penalty: [8]u32 = @splat(0);
     for (0..8) |i| penalty[i] = extras.sum(u32, &penaltys[i]);
 
     const min_penalty = std.mem.min(u32, &penalty);
-    std.log.warn("min_penalty: {d}", .{min_penalty});
     const min_mask = std.mem.indexOfScalar(u32, &penalty, min_penalty).?;
-    std.log.warn("min_mask: {d}", .{min_mask});
-
-    std.log.warn("", .{});
     return grids[min_mask];
 }
 
 fn BitGrid(comptime size: usize) type {
     return struct {
         bset: std.bit_set.ArrayBitSet(usize, size * size),
-        debug: std.bit_set.ArrayBitSet(usize, size * size),
         comptime size: usize = size,
 
         pub fn initEmpty() @This() {
             return .{
                 .bset = .initEmpty(),
-                .debug = .initEmpty(),
             };
         }
 
@@ -499,30 +455,21 @@ fn BitGrid(comptime size: usize) type {
 
         pub fn set(self: *@This(), x: usize, y: usize) void {
             self.bset.set((y * size) + x);
-            self.debug.set((y * size) + x);
         }
 
         pub fn setF(self: *@This(), x: usize, y: usize) void {
             self.bset.setValue((y * size) + x, false);
-            self.debug.setValue((y * size) + x, true);
         }
 
         pub fn setT(self: *@This(), x: usize, y: usize) void {
             self.bset.setValue((y * size) + x, true);
-            self.debug.setValue((y * size) + x, true);
         }
 
         pub fn setV(self: *@This(), x: usize, y: usize, value: bool) void {
             self.bset.setValue((y * size) + x, value);
-            self.debug.setValue((y * size) + x, true);
-        }
-
-        pub fn hasSet(self: *const @This(), x: usize, y: usize) bool {
-            return self.debug.isSet((y * size) + x);
         }
 
         pub fn flip(self: *@This(), x: usize, y: usize) void {
-            std.debug.assert(self.debug.isSet((y * size) + x));
             self.bset.toggle((y * size) + x);
         }
 
