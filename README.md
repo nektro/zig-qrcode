@@ -11,3 +11,4 @@ Zig generator for quick-response codes
 https://en.wikipedia.org/wiki/QR_code
 
 https://observablehq.com/@zavierhenry/encoding-qr-codes
+https://observablehq.com/@zavierhenry/qr-code-tables
