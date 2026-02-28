@@ -10,6 +10,12 @@ test {
     const grid = qrcode.encode(.latin1, .L, 2, "Version 2");
     // 40 95 66 57 27 36 96 f6   e2 03 20 ec 11 ec 11 ec
     _ = &grid;
+}
+test {
+    const grid = qrcode.encode(.latin1, .L, 3, "Version 3 QR Code");
+    // 41 15 66 57 27 36 96 f6   e2 03 32 05 15 22 04 36
+    // f6 46 50 ec 11 ec 11 ec   11 ec
+    _ = &grid;
 
     const bg_black = "\x1b[40m";
     const bg_white = "\x1b[47m";
