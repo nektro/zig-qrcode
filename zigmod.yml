@@ -5,3 +5,5 @@ license: MPL-2.0
 description: QR code (quick-response code) generator for Zig
 dependencies:
   - src: git https://github.com/nektro/zig-extras
+root_dependencies:
+  - src: git https://github.com/nektro/zig-expect
