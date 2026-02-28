@@ -16,6 +16,13 @@ test {
     // 41 15 66 57 27 36 96 f6   e2 03 32 05 15 22 04 36
     // f6 46 50 ec 11 ec 11 ec   11 ec
     _ = &grid;
+}
+test {
+    const grid = qrcode.encode(.latin1, .L, 4, "Version 4 QR Code, up to 50 char");
+    // 42 05 66 57 27 36 96 f6   e2 03 42 05 15 22 04 36
+    // f6 46 52 c2 07 57 02 07   46 f2 03 53 02 06 36 86
+    // 17 20 ec 11
+    _ = &grid;
 
     const bg_black = "\x1b[40m";
     const bg_white = "\x1b[47m";
