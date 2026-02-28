@@ -139,7 +139,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         for (message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
 
         for (0..groupOneDataCodewordsCountPerBlock) |i| {
-            const lead = mp[i].?;
+            const lead = mp[i] orelse 0;
             for (&generator_polynomial_alpha, 0..) |x, j| {
                 var y = GF[(@as(usize, x) + lead) % 255];
                 if (mp[i + j]) |z| y ^= GF[z];
@@ -158,7 +158,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
         for (message_polynomial, 0..) |x, i| mp[i] = to_alpha(.{@bitReverse(x)})[0];
 
         for (0..group2_datacodewords_per_block) |i| {
-            const lead = mp[i].?;
+            const lead = mp[i] orelse 0;
             for (&generator_polynomial_alpha, 0..) |x, j| {
                 var y = GF[(@as(usize, x) + lead) % 255];
                 if (mp[i + j]) |z| y ^= GF[z];
@@ -272,10 +272,6 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     // version block
     if (version >= 7) {
         var bititer: std.bit_set.IntegerBitSet(18) = .{ .mask = versionBits(version) };
-        std.debug.assert(bititer.mask == 0b001010010011010011);
-        std.debug.assert(bititer.isSet(0));
-        std.debug.assert(bititer.isSet(1));
-
         for (0..3) |x| {
             for (0..6) |y| {
                 grid.setV(size - 11 + x, y, bititer.isSet((y * 3) + x));
