@@ -729,7 +729,7 @@ fn generatorPolynomial(comptime n: usize) [n + 1]u8 {
 
 fn to_alpha(array: anytype) [array.len]u8 {
     var result: [array.len]u8 = array;
-    for (&result) |*x| x.* = @intCast(std.mem.indexOfScalar(u8, &GF, x.*).?);
+    for (&result) |*x| x.* = @intCast(std.mem.indexOfScalar(u8, &GF, x.*) orelse 0);
     return result;
 }
 
