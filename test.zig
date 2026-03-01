@@ -988,3 +988,85 @@ test {
         \\
     );
 }
+
+test {
+    const allocator = std.testing.allocator;
+    const input = "https://en.wikipedia.org/wiki/Main_Page";
+    const version = qrcode.getMinVersion(.L, .latin1, input.len).?;
+    switch (version) {
+        inline 1...40 => |v| {
+            const grid = qrcode.encode(.latin1, .L, v, input);
+            const blocks = try grid.asBlockString2(allocator);
+            defer allocator.free(blocks);
+            try expect(blocks).toEqualString(
+                \\█▀▀▀▀▀█ ▄▄█   ▀█▄  ▀▄ █▀▀▀▀▀█|
+                \\█ ███ █ ▀▄  ▄ █▄█▀█▀▀ █ ███ █|
+                \\█ ▀▀▀ █ █▀█ █▀▀▄█▄█▄▄ █ ▀▀▀ █|
+                \\▀▀▀▀▀▀▀ █ █▄▀ █ ▀▄█▄█ ▀▀▀▀▀▀▀|
+                \\▀█ █▄ ▀▀▄▄ ███▀█▄ ▀▀ ▄█▀▀▄▀▀▄|
+                \\▄ ▀▀▀ ▀▀▀▄▄███  ▄▀▄█▄ ▀█ ▀██ |
+                \\▀█▄▄██▀▀▄ ▀█ ▄▀▀▀█▄▄██▀▀ ▀ ▀▀|
+                \\ ▄ █▀█▀  ▄▀█ ▀▀▄ ▄▄▄▀ ▄▀▄█▀█▀|
+                \\  █▀▄▀▀ ▄█▄ ██▄▀▄█  ▀█▄  ▄ ▀▄|
+                \\▀   ▀█▀▀  █▀█ █▄▄▄█ █ ▄ ▄  ██|
+                \\▀ ▀▀  ▀ █▄ ▄  ▄ █  ▄█▀▀▀█ █▄▄|
+                \\█▀▀▀▀▀█ ▀▄▀   ▄▄█▀█ █ ▀ █▄▄▀▄|
+                \\█ ███ █ ▄▀▀▄█  █▀▀ ▄▀▀███▄▄█▀|
+                \\█ ▀▀▀ █ ▄█▀ █▄▄ ▄███▄█  ▀▀▀▄▀|
+                \\▀▀▀▀▀▀▀ ▀  ▀ ▀▀▀ ▀▀ ▀  ▀▀▀ ▀ |
+                \\
+            );
+            const braille = try grid.asBrailleString(allocator);
+            defer allocator.free(braille);
+            try expect(braille).toEqualString(
+                \\⡏⣭⡍⡇⢖⠃⡀⣝⡦⡬⠆⡏⣭⡍⡇|
+                \\⠧⠭⠥⠇⡏⣇⠏⡕⢗⣗⡆⠧⠭⠥⠇|
+                \\⡙⠼⠆⠭⢖⣸⣿⠙⡢⣩⡐⢯⠱⣭⠂|
+                \\⢙⢲⢿⠍⢂⢽⠰⢍⢙⣒⠟⡩⣨⢬⠅|
+                \\⠄⠋⢮⠥⠚⡦⡟⣎⣚⡄⡝⡂⡐⢨⡆|
+                \\⡥⠭⠤⡅⢗⠔⠀⣂⡧⡔⡏⠍⣇⡳⡂|
+                \\⡇⠿⠇⡇⣪⠕⣇⡘⣩⣴⣩⠛⠷⢞⠅|
+                \\⠉⠉⠉⠁⠁⠈⠈⠉⠈⠁⠁⠈⠉⠈⠀|
+                \\
+            );
+            const svg = try grid.asSvg(allocator);
+            defer allocator.free(svg);
+            try expect(svg).toEqualString(
+                \\<svg xmlns="http://www.w3.org/2000/svg" width="310" height="300" viewBox="-1 -1 31 30" shape-rendering="crispEdges" stroke="#000">
+                \\<rect x="-1" y="-1" width="31" height="30" fill="#fff" stroke="none" />
+                \\<path d="M0,0 h7 M10,0 h1 M14,0 h2 M19,0 h1 M22,0 h7" />
+                \\<path d="M0,1 h1 M6,1 h1 M8,1 h3 M15,1 h2 M20,1 h1 M22,1 h1 M28,1 h1" />
+                \\<path d="M0,2 h1 M2,2 h3 M6,2 h1 M8,2 h1 M14,2 h1 M16,2 h5 M22,2 h1 M24,2 h3 M28,2 h1" />
+                \\<path d="M0,3 h1 M2,3 h3 M6,3 h1 M9,3 h1 M12,3 h1 M14,3 h3 M18,3 h1 M22,3 h1 M24,3 h3 M28,3 h1" />
+                \\<path d="M0,4 h1 M2,4 h3 M6,4 h1 M8,4 h3 M12,4 h3 M16,4 h1 M18,4 h1 M22,4 h1 M24,4 h3 M28,4 h1" />
+                \\<path d="M0,5 h1 M6,5 h1 M8,5 h1 M10,5 h1 M12,5 h1 M15,5 h6 M22,5 h1 M28,5 h1" />
+                \\<path d="M0,6 h7 M8,6 h1 M10,6 h1 M12,6 h1 M14,6 h1 M16,6 h1 M18,6 h1 M20,6 h1 M22,6 h7" />
+                \\<path d="M8,7 h1 M10,7 h2 M14,7 h1 M17,7 h4 " />
+                \\<path d="M0,8 h2 M3,8 h1 M6,8 h2 M11,8 h5 M18,8 h2 M22,8 h3 M26,8 h2 " />
+                \\<path d="M1,9 h1 M3,9 h2 M8,9 h2 M11,9 h3 M15,9 h2 M21,9 h2 M25,9 h1 M28,9 h1" />
+                \\<path d="M2,10 h3 M6,10 h3 M11,10 h3 M17,10 h1 M19,10 h1 M22,10 h2 M25,10 h3 " />
+                \\<path d="M0,11 h1 M9,11 h5 M16,11 h1 M18,11 h3 M23,11 h1 M26,11 h2 " />
+                \\<path d="M0,12 h2 M4,12 h4 M10,12 h2 M14,12 h4 M20,12 h4 M25,12 h1 M27,12 h2" />
+                \\<path d="M1,13 h5 M8,13 h1 M11,13 h1 M13,13 h1 M17,13 h5 " />
+                \\<path d="M3,14 h4 M10,14 h2 M13,14 h2 M20,14 h1 M23,14 h1 M25,14 h4" />
+                \\<path d="M1,15 h1 M3,15 h1 M5,15 h1 M9,15 h1 M11,15 h1 M15,15 h1 M17,15 h3 M22,15 h1 M24,15 h2 M27,15 h1 " />
+                \\<path d="M2,16 h2 M5,16 h2 M9,16 h1 M12,16 h2 M15,16 h1 M17,16 h1 M20,16 h2 M27,16 h1 " />
+                \\<path d="M2,17 h1 M4,17 h1 M8,17 h3 M12,17 h3 M16,17 h2 M21,17 h2 M25,17 h1 M28,17 h1" />
+                \\<path d="M0,18 h1 M4,18 h4 M10,18 h3 M14,18 h1 M18,18 h1 M20,18 h1 M27,18 h2" />
+                \\<path d="M5,19 h1 M10,19 h1 M12,19 h1 M14,19 h5 M20,19 h1 M22,19 h1 M24,19 h1 M27,19 h2" />
+                \\<path d="M0,20 h1 M2,20 h2 M6,20 h1 M8,20 h1 M16,20 h1 M20,20 h5 M26,20 h1 " />
+                \\<path d="M8,21 h2 M11,21 h1 M14,21 h1 M16,21 h1 M19,21 h2 M24,21 h1 M26,21 h3" />
+                \\<path d="M0,22 h7 M8,22 h1 M10,22 h1 M16,22 h3 M20,22 h1 M22,22 h1 M24,22 h1 M27,22 h1 " />
+                \\<path d="M0,23 h1 M6,23 h1 M9,23 h1 M14,23 h3 M18,23 h1 M20,23 h1 M24,23 h3 M28,23 h1" />
+                \\<path d="M0,24 h1 M2,24 h3 M6,24 h1 M9,24 h2 M12,24 h1 M15,24 h3 M20,24 h5 M27,24 h2" />
+                \\<path d="M0,25 h1 M2,25 h3 M6,25 h1 M8,25 h1 M11,25 h2 M15,25 h1 M19,25 h1 M22,25 h6 " />
+                \\<path d="M0,26 h1 M2,26 h3 M6,26 h1 M9,26 h2 M12,26 h1 M17,26 h3 M21,26 h1 M24,26 h3 M28,26 h1" />
+                \\<path d="M0,27 h1 M6,27 h1 M8,27 h2 M12,27 h3 M16,27 h6 M27,27 h1 " />
+                \\<path d="M0,28 h7 M8,28 h1 M11,28 h1 M13,28 h3 M17,28 h2 M20,28 h1 M23,28 h3 M27,28 h1 " />
+                \\</svg>
+                \\
+            );
+        },
+        else => unreachable,
+    }
+}

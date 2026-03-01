@@ -1066,6 +1066,14 @@ fn versionBits(version: u16) u18 {
     })[version];
 }
 
+pub fn getMinVersion(comptime level: Level, comptime mode: Mode, length: usize) ?u16 {
+    const max_lengths = maxLenPerModeLevelVersion(mode, level);
+    for (max_lengths, 0..) |l, i| {
+        if (l > length) return @intCast(i);
+    }
+    return null;
+}
+
 //
 //
 //
