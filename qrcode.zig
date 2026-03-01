@@ -564,6 +564,41 @@ fn BitGrid(comptime size: usize) type {
             }
             return content.toOwnedSlice();
         }
+
+        pub fn asSvg(grid: *const @This(), allocator: std.mem.Allocator) ![]u8 {
+            var content: std.ArrayList(u8) = .init(allocator);
+            errdefer content.deinit();
+            try content.writer().print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}0\" height=\"{d}0\" viewBox=\"-1 -1 {d} {d}\" shape-rendering=\"crispEdges\" stroke=\"#000\">\n", .{ size + 2, size + 1, size + 2, size + 1 });
+            try content.writer().print("<rect x=\"-1\" y=\"-1\" width=\"{d}\" height=\"{d}\" fill=\"#fff\" stroke=\"none\" />\n", .{ size + 2, size + 1 });
+            var prev = false;
+            var run: u16 = 0;
+            for (0..size) |y| {
+                try content.appendSlice("<path d=\"");
+                for (0..size) |x| {
+                    if (x == 0) {
+                        run = 0;
+                        prev = grid.isSet(0, y);
+                    }
+                    const this = grid.isSet(x, y);
+                    if (this == prev) {
+                        run += 1;
+                    } else {
+                        if (prev) {
+                            try content.writer().print("M{d},{d} h{d} ", .{ x - run, y, run });
+                        }
+                        run = 1;
+                    }
+                    prev = this;
+                }
+                if (grid.isSet(size - 1, y)) {
+                    const x = size;
+                    try content.writer().print("M{d},{d} h{d}", .{ x - run, y, run });
+                }
+                try content.appendSlice("\" />\n");
+            }
+            try content.appendSlice("</svg>\n");
+            return content.toOwnedSlice();
+        }
     };
 }
 
