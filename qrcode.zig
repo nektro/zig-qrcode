@@ -534,6 +534,36 @@ fn BitGrid(comptime size: usize) type {
             }
             return content.toOwnedSlice();
         }
+
+        pub fn asBrailleString(grid: *const @This(), allocator: std.mem.Allocator) ![]u8 {
+            const B = packed struct(u8) { @"0": bool, @"1": bool, @"2": bool, @"3": bool, @"4": bool, @"5": bool, @"6": bool, @"7": bool };
+            var content: std.ArrayList(u8) = .init(allocator);
+            errdefer content.deinit();
+            for (0..grid.size / 4 + 1) |y| {
+                for (0..grid.size / 2 + 1) |x| {
+                    var b: B = std.mem.zeroes(B);
+                    inline for (0..2) |x2| {
+                        inline for (0..4) |y2| blk: {
+                            const real_x = x * 2 + x2;
+                            const real_y = y * 4 + y2;
+                            if (real_x >= grid.size) break :blk;
+                            if (real_y >= grid.size) break :blk;
+                            const is_set = grid.isSet(real_x, real_y);
+                            if (!is_set) break :blk;
+                            @field(b, "01263457"[x2 * 4 + y2 ..][0..1]) = true;
+                        }
+                    }
+                    var cp: u21 = 0x2800;
+                    cp += @as(u8, @bitCast(b));
+                    var buf: [3]u8 = undefined;
+                    _ = std.unicode.utf8Encode(cp, &buf) catch unreachable;
+                    try content.appendSlice(&buf);
+                }
+                if (builtin.is_test) try content.appendSlice("|");
+                try content.appendSlice("\n");
+            }
+            return content.toOwnedSlice();
+        }
     };
 }
 
