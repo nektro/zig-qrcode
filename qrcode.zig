@@ -486,7 +486,7 @@ fn BitGrid(comptime size: usize) type {
         }
 
         pub fn asBlockString(grid: *const @This(), allocator: std.mem.Allocator) ![]u8 {
-            var content: std.ArrayList(u8) = .init(allocator);
+            var content: std.Io.Writer.Allocating = .init(allocator);
             errdefer content.deinit();
             for (0..grid.size / 2 + 1) |y| {
                 for (0..grid.size / 2 + 1) |x| {
@@ -503,16 +503,16 @@ fn BitGrid(comptime size: usize) type {
                         }
                     }
                     const characters = [_][]const u8{ " ", "▘", "▖", "▌", "▝", "▀", "▞", "▛", "▗", "▚", "▄", "▙", "▐", "▜", "▟", "█" };
-                    try content.appendSlice(characters[(idx.mask)]);
+                    try content.writer.writeAll(characters[(idx.mask)]);
                 }
-                if (builtin.is_test) try content.appendSlice("|");
-                try content.appendSlice("\n");
+                if (builtin.is_test) try content.writer.writeAll("|");
+                try content.writer.writeAll("\n");
             }
             return content.toOwnedSlice();
         }
 
         pub fn asBlockString2(grid: *const @This(), allocator: std.mem.Allocator) ![]u8 {
-            var content: std.ArrayList(u8) = .init(allocator);
+            var content: std.Io.Writer.Allocating = .init(allocator);
             errdefer content.deinit();
             for (0..grid.size / 2 + 1) |y| {
                 for (0..grid.size) |x| {
@@ -527,17 +527,17 @@ fn BitGrid(comptime size: usize) type {
                         idx.set(y2);
                     }
                     const characters = [_][]const u8{ " ", "▀", "▄", "█" };
-                    try content.appendSlice(characters[(idx.mask)]);
+                    try content.writer.writeAll(characters[(idx.mask)]);
                 }
-                if (builtin.is_test) try content.appendSlice("|");
-                try content.appendSlice("\n");
+                if (builtin.is_test) try content.writer.writeAll("|");
+                try content.writer.writeAll("\n");
             }
             return content.toOwnedSlice();
         }
 
         pub fn asBrailleString(grid: *const @This(), allocator: std.mem.Allocator) ![]u8 {
             const B = packed struct(u8) { @"0": bool, @"1": bool, @"2": bool, @"3": bool, @"4": bool, @"5": bool, @"6": bool, @"7": bool };
-            var content: std.ArrayList(u8) = .init(allocator);
+            var content: std.Io.Writer.Allocating = .init(allocator);
             errdefer content.deinit();
             for (0..grid.size / 4 + 1) |y| {
                 for (0..grid.size / 2 + 1) |x| {
@@ -557,23 +557,23 @@ fn BitGrid(comptime size: usize) type {
                     cp += @as(u8, @bitCast(b));
                     var buf: [3]u8 = undefined;
                     _ = std.unicode.utf8Encode(cp, &buf) catch unreachable;
-                    try content.appendSlice(&buf);
+                    try content.writer.writeAll(&buf);
                 }
-                if (builtin.is_test) try content.appendSlice("|");
-                try content.appendSlice("\n");
+                if (builtin.is_test) try content.writer.writeAll("|");
+                try content.writer.writeAll("\n");
             }
             return content.toOwnedSlice();
         }
 
         pub fn asSvg(grid: *const @This(), allocator: std.mem.Allocator) ![]u8 {
-            var content: std.ArrayList(u8) = .init(allocator);
+            var content: std.Io.Writer.Allocating = .init(allocator);
             errdefer content.deinit();
-            try content.writer().print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}0\" height=\"{d}0\" viewBox=\"-1 -1 {d} {d}\" shape-rendering=\"crispEdges\" stroke=\"#000\">\n", .{ size + 2, size + 1, size + 2, size + 1 });
-            try content.writer().print("<rect x=\"-1\" y=\"-1\" width=\"{d}\" height=\"{d}\" fill=\"#fff\" stroke=\"none\" />\n", .{ size + 2, size + 1 });
+            try content.writer.print("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{d}0\" height=\"{d}0\" viewBox=\"-1 -1 {d} {d}\" shape-rendering=\"crispEdges\" stroke=\"#000\">\n", .{ size + 2, size + 1, size + 2, size + 1 });
+            try content.writer.print("<rect x=\"-1\" y=\"-1\" width=\"{d}\" height=\"{d}\" fill=\"#fff\" stroke=\"none\" />\n", .{ size + 2, size + 1 });
             var prev = false;
             var run: u16 = 0;
             for (0..size) |y| {
-                try content.appendSlice("<path d=\"");
+                try content.writer.writeAll("<path d=\"");
                 for (0..size) |x| {
                     if (x == 0) {
                         run = 0;
@@ -584,7 +584,7 @@ fn BitGrid(comptime size: usize) type {
                         run += 1;
                     } else {
                         if (prev) {
-                            try content.writer().print("M{d},{d} h{d} ", .{ x - run, y, run });
+                            try content.writer.print("M{d},{d} h{d} ", .{ x - run, y, run });
                         }
                         run = 1;
                     }
@@ -592,11 +592,11 @@ fn BitGrid(comptime size: usize) type {
                 }
                 if (grid.isSet(size - 1, y)) {
                     const x = size;
-                    try content.writer().print("M{d},{d} h{d}", .{ x - run, y, run });
+                    try content.writer.print("M{d},{d} h{d}", .{ x - run, y, run });
                 }
-                try content.appendSlice("\" />\n");
+                try content.writer.writeAll("\" />\n");
             }
-            try content.appendSlice("</svg>\n");
+            try content.writer.writeAll("</svg>\n");
             return content.toOwnedSlice();
         }
     };
