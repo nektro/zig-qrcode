@@ -70,7 +70,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
 
     const total_bits = dataCodewordsCount * 8;
 
-    var scratch: std.bit_set.ArrayBitSet(u8, total_bits) = .initEmpty();
+    var scratch: std.bit_set.ArrayBitSet(u8, total_bits) = .empty;
     var scratchw: BitsetWriter(u8, total_bits) = .{ .set = &scratch };
 
     scratchw.writeInt(mode_indicator);
@@ -193,7 +193,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     //
 
     const size = 4 * version + 17;
-    var grid: BitGrid(size) = .initEmpty();
+    var grid: BitGrid(size) = .empty;
 
     // top left finder pattern
     for (0..7) |i| for (0..7) |j| grid.setT(0 + i, 0 + j);
@@ -218,7 +218,7 @@ pub fn encode(comptime mode: Mode, comptime level: Level, comptime version: u16,
     grid.set(8, 4 * (version - 1) + 13);
 
     // data mask (data cannot be placed where this is set)
-    var data_mask: BitGrid(size) = .initEmpty();
+    var data_mask: BitGrid(size) = .empty;
     for (0..9) |y| for (0..9) |x| data_mask.set(x, y);
     for (0..9) |y| for (0..8) |x| data_mask.set(size - 8 + x, y);
     for (0..8) |y| for (0..9) |x| data_mask.set(x, size - 8 + y);
@@ -443,11 +443,7 @@ fn BitGrid(comptime size: usize) type {
         bset: std.bit_set.ArrayBitSet(usize, size * size),
         comptime size: usize = size,
 
-        pub fn initEmpty() @This() {
-            return .{
-                .bset = .initEmpty(),
-            };
-        }
+        pub const empty: @This() = .{ .bset = .empty };
 
         pub fn isSet(self: *const @This(), x: usize, y: usize) bool {
             return self.bset.isSet((y * size) + x);
@@ -474,13 +470,13 @@ fn BitGrid(comptime size: usize) type {
         }
 
         pub fn sliceX(self: *@This(), y: usize, sx: usize, comptime len: usize) std.bit_set.IntegerBitSet(len) {
-            var result: std.bit_set.IntegerBitSet(len) = .initEmpty();
+            var result: std.bit_set.IntegerBitSet(len) = .empty;
             for (0..len) |i| result.setValue(i, self.isSet(sx + i, y));
             return result;
         }
 
         pub fn sliceY(self: *@This(), x: usize, sy: usize, comptime len: usize) std.bit_set.IntegerBitSet(len) {
-            var result: std.bit_set.IntegerBitSet(len) = .initEmpty();
+            var result: std.bit_set.IntegerBitSet(len) = .empty;
             for (0..len) |i| result.setValue(i, self.isSet(x, sy + i));
             return result;
         }
@@ -490,7 +486,7 @@ fn BitGrid(comptime size: usize) type {
             errdefer content.deinit();
             for (0..grid.size / 2 + 1) |y| {
                 for (0..grid.size / 2 + 1) |x| {
-                    var idx: std.bit_set.IntegerBitSet(4) = .initEmpty();
+                    var idx: std.bit_set.IntegerBitSet(4) = .empty;
                     inline for (0..2) |x2| {
                         inline for (0..2) |y2| blk: {
                             const real_x = x * 2 + x2;
@@ -516,7 +512,7 @@ fn BitGrid(comptime size: usize) type {
             errdefer content.deinit();
             for (0..grid.size / 2 + 1) |y| {
                 for (0..grid.size) |x| {
-                    var idx: std.bit_set.IntegerBitSet(4) = .initEmpty();
+                    var idx: std.bit_set.IntegerBitSet(4) = .empty;
                     inline for (0..2) |y2| blk: {
                         const real_x = x;
                         const real_y = y * 2 + y2;
